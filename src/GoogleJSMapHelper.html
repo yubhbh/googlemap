@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html>
+<head>    <meta charset="UTF-8">
+	<meta name="viewport" content="initial-scale=1.0, user-scalable=no" />
+	<style type="text/css">html { height: 100% } body { height: 100%; margin: 0; padding: 0 } #map_canvas { height: 100% } .map_point{position:absolute;} </style>    <script type="text/javascript" src="window.mapDAO.demo.js"></script>
+	<script type="text/javascript" src="http://maps.googleapis.com/maps/api/js?libraries=geometry&sensor=true&language=zhCN"></script>    
+
+<script type="text/javascript">
+var map = null;
+var markers = [];var orderTags = [];
+var infoWindow = null;
+var star = null;
+var myLocation = null;
+// initialize地图加载函数
+function initialize() {
+	console.log('initialize()');
+	if (typeof(google) === 'undefined') {
+		console.log('google load error.');
+		window.mapDAO.onMapLoadFailed();
+		return;
+	}
+	console.log('init ok?');
+	// 设置地图参数
+	var mapOptions = {
+		zoom : 15,
+		// 缩放控件根据版本来判断是否显示
+		//.append(zoomControlOption)
+		mapTypeControl : false,
+		streetViewControl : false,
+		mapTypeId : google.maps.MapTypeId.ROADMAP
+	};
+	map = new google.maps.Map(document.getElementById('map_canvas'), mapOptions);
+	infoWindow = new google.maps.InfoWindow({
+			maxWidth : window.screen.availWidth / 4
+		});
+	// 设置Map Center Change Event
+	google.maps.event.addListener(map, 'center_changed', function () {
+		var center = map.getCenter();
+		window.mapDAO.onMapCenterChanged(center.lat(), center.lng())
+	});
+	// 设置Map Zoom Change Event
+	google.maps.event.addListener(map, 'zoom_changed', function () {
+		window.mapDAO.onMapZoomChanged(map.getZoom())
+	});
+	window.mapDAO.onMapLoaded();
+}
+// 添加Marker函数
+function addMarker() {
+	console.log('addMarker()');
+	if (markers.length > 0) {
+		console.log('?! markers is not empty');
+		return;
+	}
+	var markerSize = window.mapDAO.getDataSize();
+	console.log('markerSize = ' + markerSize);	for (var j = 0; j < markerSize; j++) {	  //添加顺序标注 , 这里把index 当作标签顺序	  var tagText = j +1;	  orderTags.push(addTagOverlay(j,tagText));	}
+	for (var i = 0; i < markerSize; i++) {
+	  addMarkerInternal(i);
+	}
+}
+// 清除Marker函数
+function clearMarker() {
+	console.log('clearMarker()');
+	for (var i in markers) {
+		markers[i].setMap(null);
+	}
+	markers.length = 0;
+}
+// 自动缩放地图函数
+function zoomToSpan(swLat, swLng, neLat, neLng) {
+	console.log('zoomToSpan()');
+	var swLatLng = new google.maps.LatLng(swLat, swLng);
+	var neLatLng = new google.maps.LatLng(neLat, neLng);
+	var latLngBounds = new google.maps.LatLngBounds(swLatLng, neLatLng);
+	map.fitBounds(latLngBounds);
+	console.log('map.fitBounds()');
+}
+// 创建Marker函数
+function addMarkerInternal(index) {
+	console.log('addMarkerInternal()');
+	var coordinate = new google.maps.LatLng(window.mapDAO.getItemLat(index), window.mapDAO.getItemLon(index));
+	var marker = new google.maps.Marker({
+			position : coordinate,
+			map : map,
+			draggable : false,
+			icon : index == 0 ?  window.mapDAO.getMarkerIcon(2) :  window.mapDAO.getMarkerIcon(1)
+		});    marker.index = index;
+	markers.push(marker);
+	// 注册Marker点击事件
+	google.maps.event.addListener(marker, 'click', function () {		//重新画线		setCurrentMarker(index);
+	});
+}
+// 获取地图中心点经纬度坐标和屏幕半径, 然后回调Android层业务搜索
+function searchOnMap() {
+	window.mapDAO.searchOnScreenMapBy(map.getCenter().lat(), map.getCenter().lng(), getScreenMapRadius());
+}
+// 获取地图半径, 从地图中心点到屏幕顶部的物理投射距离
+function getScreenMapRadius() {
+	var center = map.getCenter();
+	var topCenter = new google.maps.LatLng(map.getBounds().getNorthEast().lat(), center.lng());
+	return google.maps.geometry.spherical.computeDistanceBetween(center, topCenter);
+}
+// 设置地图中心点
+function setMapCenter(lat, lng) {
+	console.log('setMapCenter()');
+	map.setCenter(new google.maps.LatLng(lat, lng));
+}
+// 设置地图中心点、缩放比例
+function setMapCenterAndZoom(lat, lng, zoom) {
+	console.log('setMapCenterAndZoom(' + lat + ',' + lng + ',' + zoom + ')');
+	map.setCenter(new google.maps.LatLng(lat, lng));
+	map.setZoom(zoom);
+}
+// 设置地图星星
+function addStar(lat, lng, title, iconPath) {
+	console.log('addStar()');
+	if (star !== null) {
+		star.setMap(null);
+		star = null;
+	}
+	var starLatLng = new google.maps.LatLng(lat, lng);
+	star = new google.maps.Marker({
+			position : starLatLng,
+			map : map,
+			draggable : false,
+			icon : iconPath
+		});
+	if (title !== undefined && title.length > 0) {
+		google.maps.event.addListener(star, 'click', function () {
+			infoWindow.setContent(title);
+			infoWindow.open(map, star);
+		});
+	}
+	google.maps.event.addListener(star, 'click', function () {
+		window.mapDAO.onStarMarkerClicked();
+	});
+}
+
+function removeStar() {
+	console.log('removeStar()');
+	star.setMap(null);
+	star = null;
+}
+function setMyLocation(lat, lng) {
+	console.log('setMyLocation()');
+	if (myLocation !== null) {
+		myLocation.setMap(null);
+		myLocation = null;
+	}
+	var latLng = new google.maps.LatLng(lat, lng);
+	myLocation = new google.maps.Marker({
+			position : latLng,
+			map : map,
+			draggable : false,
+			icon : 'file:///android_asset/ico_map_locate.png'
+		});
+} //图标 var icon = {    purple: 'http://m.ctrip.com/you/img/icon_x2/map_point.png',    green: 'http://m.ctrip.com/you/img/icon_x2/map_point_normal.png',	orange: 'http://www.remembermyself.com/images/map_point_shown.png' }  var fontColor = {    purple:'#4A48A2',	green: '#BBEADA',	orange:'#F2977E' } //js画线操作var jsmapDraw = {	currentIndex: 0,  // 当前active 对象 	mapZoom: 9,       // 缩放比例    beforeLinePath: null,	beforePoints:[],	afterLinePath: null,	afterPoints:[],	draw: function() {	   addMarker();	   this.drawLine();	},    drawLine: function(index) {	   this.currentIndex = index || 0;	   this.beforePoints = []; 	   this.afterPoints = []; 	   var markerSize = window.mapDAO.getDataSize();	 	   for (var i = 0; i < markerSize; i++) {	     if(i== this.currentIndex) {		    this.setMaker(i,icon.purple,true);			orderTags[i].setTextStyle(fontColor.purple);		 }	     if(i < this.currentIndex || i == this.currentIndex ){		   this.beforePoints.push(new google.maps.LatLng(window.mapDAO.getItemLat(i), window.mapDAO.getItemLon(i)));		   if(i< this.currentIndex){		     this.setMaker(i,icon.orange,false);			 orderTags[i].setTextStyle(fontColor.orange);		   }		 }				if(i > this.currentIndex || i == this.currentIndex ){		   this.afterPoints.push(new google.maps.LatLng(window.mapDAO.getItemLat(i), window.mapDAO.getItemLon(i)));		   if(i > this.currentIndex){		     this.setMaker(i,icon.green,false);			 orderTags[i].setTextStyle(fontColor.green);		   }		 }	   } 	   this.addPolyline();	},	setMaker: function(index,icon,isShowInfo){	   markers[index].setIcon(icon);	   if(isShowInfo){	     infoWindow.setContent(window.mapDAO.getItemName(index));		 infoWindow.open(map, markers[index]);	   }	},	addPolyline: function() {	   //清空原来的线	   if(this.beforeLinePath != null){	      this.beforeLinePath.setMap(null);		  this.beforeLinePath = null;	   }	   if(this.afterLinePath != null){	      this.afterLinePath.setMap(null);		  this.afterLinePath = null;	   }	   	   //添加新线	   if(this.beforePoints.length > 0 ){	     this.beforeLinePath = new google.maps.Polyline({			 path: this.beforePoints,			 strokeColor: "#FF9913",			 strokeOpacity:0.6,			 strokeWeight: 2		 });		 this.beforeLinePath.setMap(map);	   }	   if(this.afterPoints.length > 0 ){	     this.afterLinePath = new google.maps.Polyline({			 path: this.afterPoints,			 strokeColor: "#0066CC",			 strokeOpacity:0.6,			 strokeWeight: 2		 });		 this.afterLinePath.setMap(map);	   }	}}//改变行程的当前点，icon显示逻辑和上面一样，并要把map的中心点设为当前marker的位置function setCurrentMarker(index){   var curIndex = index || 0;   setMapCenterAndZoom(window.mapDAO.getItemLat(curIndex), window.mapDAO.getItemLon(curIndex),jsmapDraw.mapZoom);   jsmapDraw.drawLine(index)}function addTagOverlay(index,tagText){   return new TagOverlay(new google.maps.LatLng(window.mapDAO.getItemLat(index), window.mapDAO.getItemLon(index)), index, tagText, map);}// TagOverlay定义(自定义标签)function TagOverlay(point, index, tagText, map, url) {	// 初始化参数：坐标、文字、地图	this.point_ = point;	this.index = index;	this.name_ = tagText;	this.map_ = map;	this.url_ = url || '';	// 到onAdd时才需要创建div	this.div_ = null;	// 加入map	this.setMap(map);}TagOverlay.prototype = new google.maps.OverlayView();TagOverlay.prototype.onAdd = function() {    //此方法是异步的	// 创建一个div，其中包含了当前文字	var div = document.createElement('DIV');	div.className = 'map_point';	var color = this.index == 0 ? fontColor.purple : fontColor.green;	div.style.color = color;		var span = document.createElement("span");	var text = document.createTextNode(this.name_);	span.appendChild(text);	div.appendChild(text);	this.div_ = div;	var panes = this.getPanes();	panes.overlayImage.appendChild(div);};TagOverlay.prototype.setTextStyle = function(color) {   if(this.div_) {     var div = this.div_;     div.style.color = color;   }}TagOverlay.prototype.draw = function() {	// 利用projection获得当前视图的坐标	var overlayProjection = this.getProjection();	var center = overlayProjection.fromLatLngToDivPixel(this.point_);	var div = this.div_;	div.style.width = '60px';	div.style.left = center.x -3 + 'px';	div.style.top = center.y - 33 +'px';};TagOverlay.prototype.onRemove = function() {	this.div_.parentNode.removeChild(this.div_);};
+</script>
+</head>
+<body onload="initialize()">
+	<div id="map_canvas" style="width:100%; height:100%"></div>
+</body>
+</html>
